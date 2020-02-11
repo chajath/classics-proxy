@@ -1,0 +1,10 @@
+bazel
+bazel-bazel-test
+bazel-bin
+bazel-genfiles
+bazel-out
+bazel-testlogs
+bazel-vagrant
+bazel-classics-proxy
+venv
+.vscode
