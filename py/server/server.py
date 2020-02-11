@@ -1,5 +1,5 @@
 from flask import Flask
-from flask_marshmallow import Marshmallow
+from flask_marshmallow import Marshmallow, fields
 import requests
 from lxml import html
 
@@ -11,9 +11,8 @@ class RootSchema(ma.Schema):
     class Meta:
         fields = ("_links",)
 
-    _links = ma.Hyperlinks(
-        {"self": ma.URLFor("root"),
-         "collection": ma.URLFor("corpora")}
+    _links = fields.Hyperlinks(
+        {"self": fields.URLFor("root"), "collection": fields.URLFor("corpora")}
     )
 
 
@@ -26,9 +25,7 @@ class CorporaSchema(ma.Schema):
     class Meta:
         fields = ("_links",)
 
-    _links = ma.Hyperlinks(
-        {x: ma.URLFor(x + "_root") for x in CORPORA}
-    )
+    _links = fields.Hyperlinks({x: fields.URLFor(x + "_root") for x in CORPORA})
 
 
 corpora_schema = CorporaSchema()
@@ -46,22 +43,20 @@ def corpora():
 
 @app.route("/corpora/itkc")
 def itkc_root():
-    return {
-        "_links": {
-            "titles": "/corpora/itkc/titles"
-        }
-    }
+    return {"_links": {"titles": "/corpora/itkc/titles"}}
 
 
 @app.route("/corpora/itkc/titles")
 def itkc_titles():
     r = requests.get(
-        'http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId=BT&gubun=book&depth=1')
+        "http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId=BT&gubun=book&depth=1"
+    )
     tt = r.text
     tree = html.fromstring(tt)
-    raw_titles = tree.xpath('//li/span/text()')
-    return {'raw_titles': raw_titles}
+    raw_titles = tree.xpath("//li/span/text()")
+    authors = tree.xpath("//li/span/@title")
+    return {"raw_titles": raw_titles, "authors": authors}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run()
