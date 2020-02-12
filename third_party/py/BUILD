@@ -15,23 +15,24 @@ py_library(
         requirement("flask-marshmallow"),
         requirement("marshmallow"),
         requirement("six"),
+        requirement("Flask-Caching"),
     ],
 )
 
 py_library(
-  name = "requests",
-  deps = [
-    requirement("requests"),
-    requirement("certifi"),
-    requirement("chardet"),
-    requirement("idna"),
-    requirement("urllib3")
-  ]  
+    name = "requests",
+    deps = [
+        requirement("requests"),
+        requirement("certifi"),
+        requirement("chardet"),
+        requirement("idna"),
+        requirement("urllib3"),
+    ],
 )
 
 py_library(
-  name = "lxml",
-  deps = [
-    requirement("lxml"),
-  ]
+    name = "lxml",
+    deps = [
+        requirement("lxml"),
+    ],
 )

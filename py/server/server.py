@@ -1,10 +1,18 @@
 from flask import Flask
+from flask_caching import Cache
 from flask_marshmallow import Marshmallow, fields
 import requests
 from lxml import html
+import re
 
+config = {
+    "CACHE_TYPE": "simple",
+    "CACHE_DEFAULT_TIMEOUT": 3600,
+}
 app = Flask(__name__)
+app.config.from_mapping(config)
 ma = Marshmallow(app)
+cache = Cache(app)
 
 
 class RootSchema(ma.Schema):
@@ -41,21 +49,61 @@ def corpora():
     return corpora_schema.dump({})
 
 
-@app.route("/corpora/itkc")
-def itkc_root():
-    return {"_links": {"titles": "/corpora/itkc/titles"}}
+TITLE_TO_KO_CN = re.compile("(^.*)\\((.*)\\)$")
 
 
-@app.route("/corpora/itkc/titles")
-def itkc_titles():
+@cache.cached(timeout=3600, key_prefix="itkc_collections")
+def get_all_itkc_collections():
     r = requests.get(
         "http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId=BT&gubun=book&depth=1"
     )
     tt = r.text
     tree = html.fromstring(tt)
     raw_titles = tree.xpath("//li/span/text()")
-    authors = tree.xpath("//li/span/@title")
-    return {"raw_titles": raw_titles, "authors": authors}
+    authors = [t.split(" | ")[1] for t in tree.xpath("//li/span/@title")]
+    data_id = tree.xpath("//li/@data-dataid")
+    ko_titles, cn_titles = zip(*[TITLE_TO_KO_CN.match(t).groups() for t in raw_titles])
+    return [
+        {"authors": a, "ko_titles": kt, "cn_titles": ct, "data_id": data_id}
+        for (a, kt, ct, data_id) in zip(authors, ko_titles, cn_titles, data_id)
+    ]
+
+
+@app.route("/corpora/itkc")
+def itkc_root():
+    collections = get_all_itkc_collections()
+    return {"collections": collections}
+
+
+@cache.memoize()
+def get_all_itkc_links(depth, data_id):
+    r = requests.get(
+        f"http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId=BT&gubun=book&depth={depth}&dataId={data_id}"
+    )
+    tt = r.text
+    tree = html.fromstring(tt)
+    titles = tree.xpath("//li/span/@title")
+    data_id = tree.xpath("//li/@data-dataid")
+    return [
+        {"title": title, "data_id": data_id}
+        for (title, data_id) in zip(titles, data_id)
+    ]
+
+
+ITKC_DEPTH_VOLUME = 2
+ITKC_DEPTH_SECTION = 3
+
+
+@app.route("/corpora/itkc/<string:data_id>")
+def itkc_volumes(data_id):
+    volumes = get_all_itkc_links(ITKC_DEPTH_VOLUME, data_id)
+    return {"volumes": volumes}
+
+
+@app.route("/corpora/itkc/<string:book_id>/<string:data_id>")
+def itkc_sections(book_id, data_id):
+    sections = get_all_itkc_links(ITKC_DEPTH_SECTION, data_id)
+    return {"sections": sections}
 
 
 if __name__ == "__main__":
