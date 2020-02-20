@@ -99,6 +99,12 @@ def itkc_series(series_id):
     return {"collections": collections}
 
 
+def replace_all_kc(title):
+    for (k, v) in SINCHUL_HANJA_LOOKUP.items():
+        title = title.replace(k, v)
+    return title
+
+
 @cache.memoize()
 def get_all_itkc_links(series_id, depth, data_id):
     r = requests.get(
@@ -109,7 +115,7 @@ def get_all_itkc_links(series_id, depth, data_id):
     titles = tree.xpath("//li/span/@title")
     data_id = tree.xpath("//li/@data-dataid")
     return [
-        {"title": title, "data_id": data_id}
+        {"title": replace_all_kc(title), "data_id": data_id}
         for (title, data_id) in zip(titles, data_id)
     ]
 
