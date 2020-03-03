@@ -132,18 +132,35 @@ def itkc_volumes(series_id, data_id):
     return {"volumes": volumes}
 
 
-@cache.memoize()
-def get_itkc_bt_text(data_id):
-    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
-    tt = r.text
-    tree = html.fromstring(tt)
-    tb = tree.xpath("//div[@class='text_body ']")[0].xpath("node()")[1].xpath("node()")
+def bt_div_to_text(div: html.HtmlElement):
+    tb = div.xpath("node()")
     t = ""
     for x in tb:
         if isinstance(x, str):
             t = t + x
         elif isinstance(x, html.HtmlElement) and x.tag == "br":
             t = t + "\n"
+        elif isinstance(x, html.HtmlElement) and x.tag == "div" or x.tag == "span":
+            t = t + bt_div_to_text(x)
+    return t
+
+
+@cache.memoize()
+def get_itkc_bt_text(data_id):
+    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
+    tt = r.text
+    tree = html.fromstring(tt)
+    all_nodes = tree.xpath("//div[@class='text_body ']")[0].xpath("node()")
+    t = ""
+    for elem in all_nodes:
+        if isinstance(elem, str):
+            t = t + elem.strip()
+        elif (
+            isinstance(elem, html.HtmlElement)
+            and elem.tag == "div"
+            or elem.tag == "span"
+        ):
+            t = t + bt_div_to_text(elem)
 
     return t
 
@@ -153,12 +170,17 @@ def itkc_bt_text(data_id):
     text = get_itkc_bt_text(data_id)
     return {"text": text}
 
+
 @cache.memoize()
 def get_itkc_mo_text(data_id):
     r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
     tt = r.text
     tree = html.fromstring(tt)
-    tb = tree.xpath("//div[@class='text_body ori']")[0].xpath("node()")[1].xpath("node()")
+    tb = (
+        tree.xpath("//div[@class='text_body ori']")[0]
+        .xpath("node()")[1]
+        .xpath("node()")
+    )
     t = ""
     for x in tb:
         if isinstance(x, str):
@@ -167,6 +189,7 @@ def get_itkc_mo_text(data_id):
             t = t + "\n"
 
     return t
+
 
 @app.route("/corpora/itkc/MO/text/<string:data_id>")
 def itkc_mo_text(data_id):
