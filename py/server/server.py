@@ -55,6 +55,7 @@ SINCHUL_HANJA_LOOKUP = {
 }
 SINCHUL_CODE_EXTRACT = re.compile(".*(KC[0-9]+).*")
 
+
 @cache.memoize()
 def get_all_itkc_collections(series_id):
     r = requests.get(
@@ -70,8 +71,8 @@ def get_all_itkc_collections(series_id):
             if isinstance(elem, str):
                 t = t + elem
             elif isinstance(elem, html.HtmlElement):
-                if elem.tag == 'img' and elem.attrib['class'] == 'newchar':
-                    code = SINCHUL_CODE_EXTRACT.match(elem.attrib['src']).groups()[0]
+                if elem.tag == "img" and elem.attrib["class"] == "newchar":
+                    code = SINCHUL_CODE_EXTRACT.match(elem.attrib["src"]).groups()[0]
                     if code in SINCHUL_HANJA_LOOKUP:
                         t = t + SINCHUL_HANJA_LOOKUP.get(code)
                     else:
@@ -106,34 +107,71 @@ def replace_all_kc(title):
 
 
 @cache.memoize()
-def get_all_itkc_links(series_id, depth, data_id):
+def get_all_itkc_links(series_id, data_id):
     r = requests.get(
-        f"http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId={series_id}&gubun=book&depth={depth}&dataId={data_id}"
+        f"http://db.itkc.or.kr/dir/treeAjax?grpId=&itemId={series_id}&dataId={data_id}"
     )
     tt = r.text
     tree = html.fromstring(tt)
     titles = tree.xpath("//li/span/@title")
     data_id = tree.xpath("//li/@data-dataid")
+    data_url = tree.xpath("//li/@data-url")
     return [
-        {"title": replace_all_kc(title), "data_id": data_id}
-        for (title, data_id) in zip(titles, data_id)
+        {
+            "title": replace_all_kc(title),
+            "data_id": data_id,
+            "text": "%EC%B5%9C%EC%A2%85%EC%A0%95%EB%B3%B4" in data_url,  # "최종정보"
+        }
+        for (title, data_id, data_url) in zip(titles, data_id, data_url)
     ]
 
 
-ITKC_DEPTH_VOLUME = 2
-ITKC_DEPTH_SECTION = 3
-
-
-@app.route("/corpora/itkc/<string:series_id>/<string:data_id>")
+@app.route("/corpora/itkc/<string:series_id>/meta/<string:data_id>")
 def itkc_volumes(series_id, data_id):
-    volumes = get_all_itkc_links(series_id, ITKC_DEPTH_VOLUME, data_id)
+    volumes = get_all_itkc_links(series_id, data_id)
     return {"volumes": volumes}
 
 
-@app.route("/corpora/itkc/<string:series_id>/<string:book_id>/<string:data_id>")
-def itkc_sections(series_id, book_id, data_id):
-    sections = get_all_itkc_links(series_id, ITKC_DEPTH_SECTION, data_id)
-    return {"sections": sections}
+@cache.memoize()
+def get_itkc_bt_text(data_id):
+    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
+    tt = r.text
+    tree = html.fromstring(tt)
+    tb = tree.xpath("//div[@class='text_body ']")[0].xpath("node()")[1].xpath("node()")
+    t = ""
+    for x in tb:
+        if isinstance(x, str):
+            t = t + x
+        elif isinstance(x, html.HtmlElement) and x.tag == "br":
+            t = t + "\n"
+
+    return t
+
+
+@app.route("/corpora/itkc/BT/text/<string:data_id>")
+def itkc_bt_text(data_id):
+    text = get_itkc_bt_text(data_id)
+    return {"text": text}
+
+@cache.memoize()
+def get_itkc_mo_text(data_id):
+    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
+    tt = r.text
+    tree = html.fromstring(tt)
+    tb = tree.xpath("//div[@class='text_body ori']")[0].xpath("node()")[1].xpath("node()")
+    t = ""
+    for x in tb:
+        if isinstance(x, str):
+            t = t + x
+        elif isinstance(x, html.HtmlElement) and x.tag == "br":
+            t = t + "\n"
+
+    return t
+
+@app.route("/corpora/itkc/MO/text/<string:data_id>")
+def itkc_mo_text(data_id):
+    text = get_itkc_mo_text(data_id)
+    return {"text": text}
 
 
 if __name__ == "__main__":
