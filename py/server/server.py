@@ -49,7 +49,7 @@ def corpora():
     return corpora_schema.dump({})
 
 
-TITLE_TO_KO_CN = re.compile("(^.*)\\((.*)\\)$")
+TITLE_TO_KO_ZN = re.compile("(^.*)\\((.*)\\)$")
 SINCHUL_HANJA_LOOKUP = {
     "KC01783": "楸",
 }
@@ -66,26 +66,14 @@ def get_all_itkc_collections(series_id):
     raw_title_spans = tree.xpath("//li/span")
     raw_titles = []
     for n in raw_title_spans:
-        t = ""
-        for elem in n.xpath("node()"):
-            if isinstance(elem, str):
-                t = t + elem
-            elif isinstance(elem, html.HtmlElement):
-                if elem.tag == "img" and elem.attrib["class"] == "newchar":
-                    code = SINCHUL_CODE_EXTRACT.match(elem.attrib["src"]).groups()[0]
-                    if code in SINCHUL_HANJA_LOOKUP:
-                        t = t + SINCHUL_HANJA_LOOKUP.get(code)
-                    else:
-                        print(f"Unknown Sinchul Hanja code: {code}")
-                else:
-                    print(f"Unknown img tag: {etree.tostring(elem,encoding='unicode')}")
+        t = bt_div_to_text(n)
         raw_titles.append(t)
     authors = [t.split(" | ")[1] for t in tree.xpath("//li/span/@title")]
     data_id = tree.xpath("//li/@data-dataid")
-    ko_titles, cn_titles = zip(*[TITLE_TO_KO_CN.match(t).groups() for t in raw_titles])
+    ko_titles, zn_titles = zip(*[TITLE_TO_KO_ZN.match(t).groups() for t in raw_titles])
     return [
-        {"authors": a, "ko_titles": kt, "cn_titles": ct, "data_id": data_id}
-        for (a, kt, ct, data_id) in zip(authors, ko_titles, cn_titles, data_id)
+        {"authors": a, "title": kt, "zn_title": zt, "data_id": data_id}
+        for (a, kt, zt, data_id) in zip(authors, ko_titles, zn_titles, data_id)
     ]
 
 
@@ -120,7 +108,7 @@ def get_all_itkc_links(series_id, data_id):
         {
             "title": replace_all_kc(title),
             "data_id": data_id,
-            "text": "%EC%B5%9C%EC%A2%85%EC%A0%95%EB%B3%B4" in data_url,  # "최종정보"
+            "is_text": "%EC%B5%9C%EC%A2%85%EC%A0%95%EB%B3%B4" in data_url,  # "최종정보"
         }
         for (title, data_id, data_url) in zip(titles, data_id, data_url)
     ]
@@ -132,43 +120,78 @@ def itkc_volumes(series_id, data_id):
     return {"volumes": volumes}
 
 
+@app.route("/corpora/itkc/<string:series_id>/all_text_meta/<string:data_id>")
+@cache.memoize()
+def itkc_all_text_meta(series_id, data_id):
+    volumes = []
+    pioneer_data_ids = [data_id]
+    while len(pioneer_data_ids) > 0:
+        d_id = pioneer_data_ids.pop(0)
+        print(d_id)
+        vs = itkc_volumes(series_id, d_id)["volumes"]
+        for v in vs:
+            if v["is_text"]:
+                volumes.append(v)
+            else:
+                pioneer_data_ids.append(v["data_id"])
+
+    return {"volumes": volumes}
+
+
 def bt_div_to_text(div: html.HtmlElement):
     tb = div.xpath("node()")
     t = ""
     for x in tb:
         if isinstance(x, str):
-            t = t + x
+            t = t + x.strip()
         elif isinstance(x, html.HtmlElement) and x.tag == "br":
             t = t + "\n"
-        elif isinstance(x, html.HtmlElement) and x.tag == "div" or x.tag == "span":
+        elif isinstance(x, html.HtmlElement) and x.tag in [
+            "div",
+            "span",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+        ]:
             t = t + bt_div_to_text(x)
+        elif (
+            isinstance(x, html.HtmlElement)
+            and x.tag == "img"
+            and x.attrib["class"] == "newchar"
+        ):
+            code = SINCHUL_CODE_EXTRACT.match(x.attrib["src"]).groups()[0]
+            if code in SINCHUL_HANJA_LOOKUP:
+                t = t + SINCHUL_HANJA_LOOKUP.get(code)
+            else:
+                print(f"Unknown Sinchul Hanja code: {code}")
+
     return t
 
 
 @cache.memoize()
 def get_itkc_bt_text(data_id):
-    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
+    r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}&viewSync=OT")
     tt = r.text
     tree = html.fromstring(tt)
-    all_nodes = tree.xpath("//div[@class='text_body ']")[0].xpath("node()")
-    t = ""
-    for elem in all_nodes:
-        if isinstance(elem, str):
-            t = t + elem.strip()
-        elif (
-            isinstance(elem, html.HtmlElement)
-            and elem.tag == "div"
-            or elem.tag == "span"
-        ):
-            t = t + bt_div_to_text(elem)
+    all_nodes = tree.xpath("//div[@class='text_body ']")[0]
+    t = bt_div_to_text(all_nodes)
+    all_zn_nodes = tree.xpath("//div[@class='text_body ori']")[0]
+    zn_t = bt_div_to_text(all_zn_nodes)
+    all_title_nodes = tree.xpath("//div[@class='text_body_tit ']")[0]
+    title_t = bt_div_to_text(all_title_nodes)
+    all_zn_title_nodes = tree.xpath("//div[@class='text_body_tit ori']")[0]
+    zn_title_t = bt_div_to_text(all_zn_title_nodes)
 
-    return t
+    return t, zn_t, title_t, zn_title_t
 
 
 @app.route("/corpora/itkc/BT/text/<string:data_id>")
 def itkc_bt_text(data_id):
-    text = get_itkc_bt_text(data_id)
-    return {"text": text}
+    text, zn_text, title, zn_title = get_itkc_bt_text(data_id)
+    return {"text": text, "zn_text": zn_text, "title": title, "zn_title": zn_title}
 
 
 @cache.memoize()
@@ -176,25 +199,15 @@ def get_itkc_mo_text(data_id):
     r = requests.get(f"http://db.itkc.or.kr/dir/node?dataId={data_id}")
     tt = r.text
     tree = html.fromstring(tt)
-    tb = (
-        tree.xpath("//div[@class='text_body ori']")[0]
-        .xpath("node()")[1]
-        .xpath("node()")
-    )
-    t = ""
-    for x in tb:
-        if isinstance(x, str):
-            t = t + x
-        elif isinstance(x, html.HtmlElement) and x.tag == "br":
-            t = t + "\n"
-
-    return t
+    all_nodes = tree.xpath("//div[@class='text_body ori']")[0]
+    all_zn_title_nodes = tree.xpath("//div[@class='text_body_tit mt10 ori']")[0]
+    return bt_div_to_text(all_nodes), bt_div_to_text(all_zn_title_nodes).split("\n")[0]
 
 
 @app.route("/corpora/itkc/MO/text/<string:data_id>")
 def itkc_mo_text(data_id):
-    text = get_itkc_mo_text(data_id)
-    return {"text": text}
+    zn_text, zn_title = get_itkc_mo_text(data_id)
+    return {"zn_text": zn_text, "zn_title": zn_title}
 
 
 if __name__ == "__main__":
