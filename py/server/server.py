@@ -1,9 +1,10 @@
 from flask import Flask
 from flask_caching import Cache
-from flask_marshmallow import Marshmallow, fields
 import requests
 from lxml import html, etree
 import re
+from flask_swagger_ui import get_swaggerui_blueprint
+from yaml import Loader, load
 
 config = {
     "CACHE_TYPE": "simple",
@@ -11,42 +12,17 @@ config = {
 }
 app = Flask(__name__)
 app.config.from_mapping(config)
-ma = Marshmallow(app)
 cache = Cache(app)
-
-
-class RootSchema(ma.Schema):
-    class Meta:
-        fields = ("_links",)
-
-    _links = fields.Hyperlinks(
-        {"self": fields.URLFor("root"), "collection": fields.URLFor("corpora")}
-    )
-
-
-root_schema = RootSchema()
-
-CORPORA = ["itkc"]
-
-
-class CorporaSchema(ma.Schema):
-    class Meta:
-        fields = ("_links",)
-
-    _links = fields.Hyperlinks({x: fields.URLFor(x + "_root") for x in CORPORA})
-
-
-corpora_schema = CorporaSchema()
 
 
 @app.route("/")
 def root():
-    return root_schema.dump({})
+    return {"_links": {"self": "/", "collection": "/corpora"}}
 
 
 @app.route("/corpora")
 def corpora():
-    return corpora_schema.dump({})
+    return {"_links": {"self": "/corpora", "itkc": "/corpora/itkc",}}
 
 
 TITLE_TO_KO_ZN = re.compile("(^.*)\\((.*)\\)$")
@@ -79,13 +55,23 @@ def get_all_itkc_collections(series_id):
 
 @app.route("/corpora/itkc")
 def itkc_root():
-    return {"series": ["BT", "MO"]}
+    return {
+        "series": [{"id": "BT", "name": "고전번역서",}, {"id": "MO", "name": "한국문집총간",}],
+        "_links": {"self": "/corpora/itkc", "series": "/corpora/itkc/{id}"},
+    }
 
 
 @app.route("/corpora/itkc/<string:series_id>")
 def itkc_series(series_id):
     collections = get_all_itkc_collections(series_id)
-    return {"collections": collections}
+    return {
+        "collections": collections,
+        "_links": {
+            "self": f"/corpora/itkc/{series_id}",
+            "meta": f"/corpora/itkc/{series_id}/meta/{{data_id}}",
+            "all_text_meta": f"/corpora/itkc/{series_id}/all_text_meta/{{data_id}}",
+        },
+    }
 
 
 def replace_all_kc(title):
@@ -209,6 +195,12 @@ def itkc_mo_text(data_id):
     zn_text, zn_title = get_itkc_mo_text(data_id)
     return {"zn_text": zn_text, "zn_title": zn_title}
 
+
+swagger_yml = load(open("./py/server/openapi/itkc_api.yaml", "r"), Loader=Loader)
+swaggerui_blueprint = get_swaggerui_blueprint(
+    "/api/docs", "/api/docs/swagger.json", config={"spec": swagger_yml}
+)
+app.register_blueprint(swaggerui_blueprint, url_prefix="/api/docs")
 
 if __name__ == "__main__":
     app.run()

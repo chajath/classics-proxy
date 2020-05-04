@@ -12,9 +12,6 @@ py_library(
         requirement("Jinja2"),
         requirement("MarkupSafe"),
         requirement("click"),
-        requirement("flask-marshmallow"),
-        requirement("marshmallow"),
-        requirement("six"),
         requirement("Flask-Caching"),
     ],
 )
