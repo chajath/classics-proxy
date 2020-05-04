@@ -1,0 +1,61 @@
+openapi: "3.0.2"
+info:
+  title: Classics Proxy API
+  version: "1.0"
+servers:
+  - url: http://localhost:5000
+paths:
+  /corpora/itkc:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  series:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+          links:
+            ListSeries:
+              operationId: itkc_series
+              parameters:
+                seriesId: "$response.body#/series/id"
+  /corpora/itkc/{seriesId}:
+    get:
+      operationId: itkc_series
+      parameters:
+        - name: "seriesId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        authors:
+                          type: string
+                        data_id:
+                          type: string
+                        title:
+                          type: string
+                        zn_title:
+                          type: string
