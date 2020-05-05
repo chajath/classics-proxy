@@ -7,6 +7,7 @@ servers:
 paths:
   /corpora/itkc:
     get:
+      operationId: itkc_corpora
       responses:
         "200":
           description: OK
@@ -59,3 +60,95 @@ paths:
                           type: string
                         zn_title:
                           type: string
+  /corpora/itkc/{seriesId}/meta/{dataId}:
+    get:
+      operationId: itkc_meta
+      parameters:
+        - name: "seriesId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+        - name: "dataId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  volumes:
+                    $ref: "#/components/schemas/Volumes"
+  /corpora/itkc/{seriesId}/all_text_meta/{dataId}:
+    get:
+      operationId: itkc_all_text_meta
+      parameters:
+        - name: "seriesId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+        - name: "dataId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  volumes:
+                    $ref: "#/components/schemas/Volumes"
+  /corpora/itkc/{seriesId}/text/{dataId}:
+    get:
+      operationId: itkc_text
+      parameters:
+        - name: "seriesId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+        - name: "dataId"
+          in: "path"
+          schema:
+            type: "string"
+          required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  zn_text:
+                    type: string
+                  title:
+                    type: string
+                  zn_title:
+                    type: string
+
+components:
+  schemas:
+    Volumes:
+      type: array
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+          data_id:
+            type: string
+          is_text:
+            type: boolean
