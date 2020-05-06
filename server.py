@@ -196,7 +196,7 @@ def itkc_mo_text(data_id):
     return {"zn_text": zn_text, "zn_title": zn_title}
 
 
-swagger_yml = load(open("./py/server/openapi/itkc_api.yaml", "r"), Loader=Loader)
+swagger_yml = load(open("./openapi/itkc_api.yaml", "r"), Loader=Loader)
 swaggerui_blueprint = get_swaggerui_blueprint(
     "/api/docs", "/api/docs/swagger.json", config={"spec": swagger_yml}
 )

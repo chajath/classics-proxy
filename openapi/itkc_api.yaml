@@ -3,6 +3,7 @@ info:
   title: Classics Proxy API
   version: "1.0"
 servers:
+  - url: https://snappy-frame-253402.appspot.com
   - url: http://localhost:5000
 paths:
   /corpora/itkc:
