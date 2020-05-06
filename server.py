@@ -146,6 +146,7 @@ def bt_div_to_text(div: html.HtmlElement):
         elif (
             isinstance(x, html.HtmlElement)
             and x.tag == "img"
+            and "class" in x.attrib
             and x.attrib["class"] == "newchar"
         ):
             code = SINCHUL_CODE_EXTRACT.match(x.attrib["src"]).groups()[0]
@@ -164,13 +165,18 @@ def get_itkc_bt_text(data_id):
     tree = html.fromstring(tt)
     all_nodes = tree.xpath("//div[@class='text_body ']")[0]
     t = bt_div_to_text(all_nodes)
-    all_zn_nodes = tree.xpath("//div[@class='text_body ori']")[0]
-    zn_t = bt_div_to_text(all_zn_nodes)
-    all_title_nodes = tree.xpath("//div[@class='text_body_tit ']")[0]
+    if len(tree.xpath("//div[@class='text_body ori']")) > 0:
+        all_zn_nodes = tree.xpath("//div[@class='text_body ori']")[0]
+        zn_t = bt_div_to_text(all_zn_nodes)
+    else:
+        zn_t = None
+    all_title_nodes = tree.xpath("//div[contains(@class, 'text_body_tit') and not(contains(@class, 'ori'))]")[0]
     title_t = bt_div_to_text(all_title_nodes)
-    all_zn_title_nodes = tree.xpath("//div[@class='text_body_tit ori']")[0]
-    zn_title_t = bt_div_to_text(all_zn_title_nodes)
-
+    if len(tree.xpath("//div[@class='text_body_tit ori']")) > 0:
+        all_zn_title_nodes = tree.xpath("//div[@class='text_body_tit ori']")[0]
+        zn_title_t = bt_div_to_text(all_zn_title_nodes)
+    else:
+        zn_title_t = None
     return t, zn_t, title_t, zn_title_t
 
 
