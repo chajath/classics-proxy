@@ -1,14 +1,16 @@
 openapi: "3.0.2"
 info:
   title: Classics Proxy API
+  description: Proxy API for fetching Classic Sino-Korean Literature from various corpora
   version: "1.0"
 servers:
   - url: https://snappy-frame-253402.appspot.com
   - url: http://localhost:5000
 paths:
-  /corpora/itkc:
+  /corpora/itkc:    
     get:
       operationId: itkc_corpora
+      description: List all supported itkc corpora
       responses:
         "200":
           description: OK
@@ -24,8 +26,10 @@ paths:
                       properties:
                         id:
                           type: string
+                          description: Id of the corpora. Use this Id as a `{seriesId}` component under /corpora/itkc/
                         name:
                           type: string
+                          description: User-friendly name in Korean
           links:
             ListSeries:
               operationId: itkc_series
@@ -34,12 +38,9 @@ paths:
   /corpora/itkc/{seriesId}:
     get:
       operationId: itkc_series
+      description: List all volumns for the corpus
       parameters:
-        - name: "seriesId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
+        - $ref: "#/components/parameters/SeriesId"
       responses:
         200:
           description: OK
@@ -64,17 +65,10 @@ paths:
   /corpora/itkc/{seriesId}/meta/{dataId}:
     get:
       operationId: itkc_meta
+      description: List subsections and articles belonging to the given `dataId`.
       parameters:
-        - name: "seriesId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
-        - name: "dataId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
+        - $ref: "#/components/parameters/SeriesId"
+        - $ref: "#/components/parameters/DataId"
       responses:
         200:
           description: OK
@@ -88,17 +82,10 @@ paths:
   /corpora/itkc/{seriesId}/all_text_meta/{dataId}:
     get:
       operationId: itkc_all_text_meta
+      description: Recursively list all text nodes under the given `dataId`
       parameters:
-        - name: "seriesId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
-        - name: "dataId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
+        - $ref: "#/components/parameters/SeriesId"
+        - $ref: "#/components/parameters/DataId"
       responses:
         200:
           description: OK
@@ -112,17 +99,10 @@ paths:
   /corpora/itkc/{seriesId}/text/{dataId}:
     get:
       operationId: itkc_text
+      description: Get the text content
       parameters:
-        - name: "seriesId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
-        - name: "dataId"
-          in: "path"
-          schema:
-            type: "string"
-          required: true
+        - $ref: "#/components/parameters/SeriesId"
+        - $ref: "#/components/parameters/DataId"
       responses:
         200:
           description: OK
@@ -141,6 +121,21 @@ paths:
                     type: string
 
 components:
+  parameters:
+    SeriesId:
+      name: "seriesId"
+      in: "path"
+      schema:
+        type: "string"
+      required: true
+      description: Id of the corpora from `/corpora/itkc`
+    DataId:
+      name: "dataId"
+      in: "path"
+      schema:
+        type: "string"
+      required: true
+      description: Id for the node as given in the `data_id` field
   schemas:
     Volumes:
       type: array
@@ -153,3 +148,4 @@ components:
             type: string
           is_text:
             type: boolean
+            description: True if the node is the text node, which can be queried by `itkc_text` operation
