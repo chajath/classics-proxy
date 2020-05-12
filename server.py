@@ -5,6 +5,7 @@ from lxml import html, etree
 import re
 from flask_swagger_ui import get_swaggerui_blueprint
 from yaml import Loader, load
+from werkzeug.routing import BaseConverter
 
 config = {
     "CACHE_TYPE": "simple",
@@ -14,6 +15,17 @@ app = Flask(__name__)
 app.config.from_mapping(config)
 cache = Cache(app)
 
+# RegexConverter from https://stackoverflow.com/a/5872904
+
+
+class RegexConverter(BaseConverter):
+    def __init__(self, url_map, *items):
+        super(RegexConverter, self).__init__(url_map)
+        self.regex = items[0]
+
+
+app.url_map.converters["regex"] = RegexConverter
+
 
 @app.route("/")
 def root():
@@ -22,7 +34,13 @@ def root():
 
 @app.route("/corpora")
 def corpora():
-    return {"_links": {"self": "/corpora", "itkc": "/corpora/itkc",}}
+    return {
+        "_links": {
+            "self": "/corpora",
+            "itkc": "/corpora/itkc",
+            "historygokr": "/corpora/historygokr",
+        }
+    }
 
 
 TITLE_TO_KO_ZN = re.compile("(^.*)\\((.*)\\)$")
@@ -44,7 +62,10 @@ def get_all_itkc_collections(series_id):
     for n in raw_title_spans:
         t = bt_div_to_text(n)
         raw_titles.append(t)
-    authors = [t.split(" | ")[1] for t in tree.xpath("//li/span/@title")]
+    authors = [
+        t.split(" | ")[1] if " | " in t else None
+        for t in tree.xpath("//li/span/@title")
+    ]
     data_id = tree.xpath("//li/@data-dataid")
     ko_titles, zn_titles = zip(*[TITLE_TO_KO_ZN.match(t).groups() for t in raw_titles])
     return [
@@ -56,7 +77,11 @@ def get_all_itkc_collections(series_id):
 @app.route("/corpora/itkc")
 def itkc_root():
     return {
-        "series": [{"id": "BT", "name": "고전번역서",}, {"id": "MO", "name": "한국문집총간",}],
+        "series": [
+            {"id": "BT", "name": "고전번역서",},
+            {"id": "MO", "name": "한국문집총간",},
+            {"id": "JT", "name": "조선왕조실록",},
+        ],
         "_links": {"self": "/corpora/itkc", "series": "/corpora/itkc/{id}"},
     }
 
@@ -170,7 +195,9 @@ def get_itkc_bt_text(data_id):
         zn_t = bt_div_to_text(all_zn_nodes)
     else:
         zn_t = None
-    all_title_nodes = tree.xpath("//div[contains(@class, 'text_body_tit') and not(contains(@class, 'ori'))]")[0]
+    all_title_nodes = tree.xpath(
+        "//div[contains(@class, 'text_body_tit') and not(contains(@class, 'ori'))]"
+    )[0]
     title_t = bt_div_to_text(all_title_nodes)
     if len(tree.xpath("//div[@class='text_body_tit ori']")) > 0:
         all_zn_title_nodes = tree.xpath("//div[@class='text_body_tit ori']")[0]
@@ -181,6 +208,7 @@ def get_itkc_bt_text(data_id):
 
 
 @app.route("/corpora/itkc/BT/text/<string:data_id>")
+@app.route("/corpora/itkc/JT/text/<string:data_id>")
 def itkc_bt_text(data_id):
     text, zn_text, title, zn_title = get_itkc_bt_text(data_id)
     return {"text": text, "zn_text": zn_text, "title": title, "zn_title": zn_title}
@@ -200,6 +228,74 @@ def get_itkc_mo_text(data_id):
 def itkc_mo_text(data_id):
     zn_text, zn_title = get_itkc_mo_text(data_id)
     return {"zn_text": zn_text, "zn_title": zn_title}
+
+
+@cache.memoize()
+@app.route("/corpora/historygokr/silloc")
+def historygokr_silloc():
+    r = requests.get("http://sillok.history.go.kr/main/main.do")
+    tt = r.text
+    tree = html.fromstring(tt)
+    volumes = [
+        {
+            "title": a.text,
+            "data_id": a.attrib["href"]
+            .replace("javascript:search('", "")
+            .replace("');", ""),
+            "is_text": False,
+        }
+        for a in tree.xpath(
+            "//div[@id='m_cont_list']//ul[contains(@class,'m_cont')]//a"
+        )
+    ]
+    return {"volumes": volumes}
+
+
+SILLOC_ID_EXTRACT = re.compile("k[a-z]{2}_[0-9]+")
+ALL_WS = re.compile("\\s+")
+
+
+@cache.memoize()
+@app.route("/corpora/historygokr/silloc/meta/<regex('k[a-z]{2}'):kid>")
+def historygokr_silloc_kings(kid):
+    r = requests.get(
+        f"http://sillok.history.go.kr/search/inspectionMonthList.do?id={kid}"
+    )
+    tt = r.text
+    tree = html.fromstring(tt)
+    years = tree.xpath("//ul[contains(@class, 'king_year')]/li")
+    vs = []
+    for y in years:
+        header_div = y.xpath("div")[0]
+        spans = header_div.xpath("span")
+        if len(spans) > 0:
+            first_span = header_div.xpath("span")[0]
+            year_title = ALL_WS.sub(" ", header_div.text_content().strip()).replace(
+                " 원본", ""
+            )
+            if "onclick" in first_span.attrib:
+                id = SILLOC_ID_EXTRACT.findall(first_span.attrib["onclick"])[0]
+                vs.append({"title": year_title, "data_id": id, "is_text": False})
+                continue
+            for month in y.xpath("ul/li/a"):
+                id = SILLOC_ID_EXTRACT.findall(month.attrib["href"])[0]
+                vs.append(
+                    {
+                        "title": f"{year_title} {month.text_content()}",
+                        "data_id": id,
+                        "is_text": False,
+                    }
+                )
+        else:
+            first_anchor = header_div.xpath("a")[0]
+            id = SILLOC_ID_EXTRACT.findall(first_anchor.attrib["href"])[0]
+            title = ALL_WS.sub(" ", header_div.text_content().strip()).replace(
+                " 원본", ""
+            )
+            vs.append(
+                {"title": title, "data_id": id, "is_text": False,}
+            )
+    return {"volumes": vs}
 
 
 swagger_yml = load(open("./openapi/itkc_api.yaml", "r"), Loader=Loader)
