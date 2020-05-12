@@ -251,7 +251,7 @@ def historygokr_silloc():
     return {"volumes": volumes}
 
 
-SILLOC_ID_EXTRACT = re.compile("k[a-z]{2}_[0-9]+")
+SILLOC_ID_EXTRACT = re.compile("k[a-z]{2}_[_0-9]+")
 ALL_WS = re.compile("\\s+")
 
 
@@ -295,6 +295,25 @@ def historygokr_silloc_kings(kid):
             vs.append(
                 {"title": title, "data_id": id, "is_text": False,}
             )
+    return {"volumes": vs}
+
+
+@cache.memoize()
+@app.route("/corpora/historygokr/silloc/meta/<regex('k[a-z]{2}_[0-9]+'):mid>")
+def historygokr_silloc_month(mid):
+    r = requests.get(
+        f"http://sillok.history.go.kr/search/inspectionDayList.do?id={mid}"
+    )
+    tt = r.text
+    tree = html.fromstring(tt)
+    vs = []
+    for a in tree.xpath("//dl[contains(@class,'ins_list_main')]//li/a"):
+        id = SILLOC_ID_EXTRACT.findall(a.attrib["href"])[0]
+        title = a.text_content()
+        vs.append(
+            {"title": title, "data_id": id, "is_text": True,}
+        )
+
     return {"volumes": vs}
 
 
