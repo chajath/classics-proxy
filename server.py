@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 config = {
     "CACHE_TYPE": "simple",
     "CACHE_DEFAULT_TIMEOUT": 3600,
+    "JSON_AS_ASCII": False,
 }
 app = Flask(__name__)
 app.config.from_mapping(config)
