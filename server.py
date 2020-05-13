@@ -6,6 +6,7 @@ import re
 from flask_swagger_ui import get_swaggerui_blueprint
 from yaml import Loader, load
 from werkzeug.routing import BaseConverter
+from bs4 import BeautifulSoup
 
 config = {
     "CACHE_TYPE": "simple",
@@ -231,8 +232,8 @@ def itkc_mo_text(data_id):
 
 
 @cache.memoize()
-@app.route("/corpora/historygokr/silloc")
-def historygokr_silloc():
+@app.route("/corpora/historygokr/sillok")
+def historygokr_sillok():
     r = requests.get("http://sillok.history.go.kr/main/main.do")
     tt = r.text
     tree = html.fromstring(tt)
@@ -251,13 +252,13 @@ def historygokr_silloc():
     return {"volumes": volumes}
 
 
-SILLOC_ID_EXTRACT = re.compile("k[a-z]{2}_[_0-9]+")
+SILLOK_ID_EXTRACT = re.compile("k[a-z]{2}_[_0-9]+")
 ALL_WS = re.compile("\\s+")
 
 
 @cache.memoize()
-@app.route("/corpora/historygokr/silloc/meta/<regex('k[a-z]{2}'):kid>")
-def historygokr_silloc_kings(kid):
+@app.route("/corpora/historygokr/sillok/meta/<regex('k[a-z]{2}'):kid>")
+def historygokr_sillok_kings(kid):
     r = requests.get(
         f"http://sillok.history.go.kr/search/inspectionMonthList.do?id={kid}"
     )
@@ -274,11 +275,11 @@ def historygokr_silloc_kings(kid):
                 " 원본", ""
             )
             if "onclick" in first_span.attrib:
-                id = SILLOC_ID_EXTRACT.findall(first_span.attrib["onclick"])[0]
+                id = SILLOK_ID_EXTRACT.findall(first_span.attrib["onclick"])[0]
                 vs.append({"title": year_title, "data_id": id, "is_text": False})
                 continue
             for month in y.xpath("ul/li/a"):
-                id = SILLOC_ID_EXTRACT.findall(month.attrib["href"])[0]
+                id = SILLOK_ID_EXTRACT.findall(month.attrib["href"])[0]
                 vs.append(
                     {
                         "title": f"{year_title} {month.text_content()}",
@@ -288,7 +289,7 @@ def historygokr_silloc_kings(kid):
                 )
         else:
             first_anchor = header_div.xpath("a")[0]
-            id = SILLOC_ID_EXTRACT.findall(first_anchor.attrib["href"])[0]
+            id = SILLOK_ID_EXTRACT.findall(first_anchor.attrib["href"])[0]
             title = ALL_WS.sub(" ", header_div.text_content().strip()).replace(
                 " 원본", ""
             )
@@ -299,8 +300,8 @@ def historygokr_silloc_kings(kid):
 
 
 @cache.memoize()
-@app.route("/corpora/historygokr/silloc/meta/<regex('k[a-z]{2}_[0-9]+'):mid>")
-def historygokr_silloc_month(mid):
+@app.route("/corpora/historygokr/sillok/meta/<regex('k[a-z]{2}_[0-9]+'):mid>")
+def historygokr_sillok_month(mid):
     r = requests.get(
         f"http://sillok.history.go.kr/search/inspectionDayList.do?id={mid}"
     )
@@ -308,13 +309,51 @@ def historygokr_silloc_month(mid):
     tree = html.fromstring(tt)
     vs = []
     for a in tree.xpath("//dl[contains(@class,'ins_list_main')]//li/a"):
-        id = SILLOC_ID_EXTRACT.findall(a.attrib["href"])[0]
+        id = SILLOK_ID_EXTRACT.findall(a.attrib["href"])[0]
         title = a.text_content()
         vs.append(
             {"title": title, "data_id": id, "is_text": True,}
         )
 
     return {"volumes": vs}
+
+
+def text_content_without_sup(node):
+    text = ""
+    for elem in node.iter():
+        # Exclude superscript, which is a pointer to a footnote.
+        if elem.tag != "sup":
+            if elem.text:
+                text += elem.text
+        if elem.tail:
+            text += elem.tail
+    return ALL_WS.sub(" ", text).strip()
+
+
+@cache.memoize()
+@app.route("/corpora/historygokr/sillok/text/<string:tid>")
+def historygokr_sillok_text(tid):
+    r = requests.get(f"http://sillok.history.go.kr/id/{tid}")
+    tt = r.text
+    # Normalize HTML text with html5lib in order to fix unclosed div tags.
+    tree = html.fromstring(str(BeautifulSoup(tt, "html5lib")))
+    t_tree = tree.xpath("//div[contains(@class,'ins_left_in')]//p[@class='paragraph']")
+    zn_t_tree = tree.xpath(
+        "//div[contains(@class,'ins_right_in')]//p[@class='paragraph']"
+    )
+    text = "\n".join([text_content_without_sup(p) for p in t_tree])
+    zn_text = "\n".join([text_content_without_sup(p) for p in zn_t_tree])
+    title_tree = tree.xpath("//*[contains(@class,'search_tit')]")
+    if len(title_tree) > 0:
+        title = title_tree[0].text_content()
+    else:
+        title = None
+    tag_tree = tree.xpath("//li[@class='view_font02']//div")
+    if len(tag_tree) > 0:
+        tags = tag_tree[0].text_content().split(" / ")
+    else:
+        tags = []
+    return {"text": text, "zn_text": zn_text, "title": title, "tags": tags}
 
 
 swagger_yml = load(open("./openapi/itkc_api.yaml", "r"), Loader=Loader)
