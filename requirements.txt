@@ -1,5 +1,5 @@
 Flask==1.1.1
-requests==2.22.0
+requests==2.31.0
 lxml==4.9.1
 Flask-Caching==1.8.0
 flask-swagger-ui==3.25.0
